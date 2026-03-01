@@ -1,7 +1,6 @@
 from rest_framework import viewsets, permissions
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
-from django.db.models import Q
 
 from .models import Application
 from .serializers import ApplicationSerializer
@@ -15,43 +14,46 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
 
-        if not user.is_authenticated:
+        # 🔒 AnonymousUser
+        if not user or not user.is_authenticated:
             return Application.objects.none()
 
-        if user.role == "admin":
+        # 👑 Admin
+        if getattr(user, "role", None) == "admin":
             return Application.objects.all()
 
-        if user.role == "recruiter":
+        # 🤝 Recruiter 
+        if getattr(user, "role", None) == "recruiter":
             return Application.objects.filter(
                 job__company__owner=user
             )
 
-        return Application.objects.filter(user=user)
-
-        if user.role == "admin":
-            return Application.objects.all()
-
-        if user.role == "recruiter":
-
-            return Application.objects.filter(
-                job__company__owner=user
-            )
-
+        # 👤 أي مستخدم عادي يشوف تطبيقاته فقط
         return Application.objects.filter(user=user)
 
     def perform_create(self, serializer):
-        application = serializer.save(user=self.request.user)
+        user = self.request.user
+
+        if not user.is_authenticated:
+            raise PermissionDenied("Authentication required")
+
+        application = serializer.save(user=user)
 
         ActivityLog.objects.create(
-            user=self.request.user,
+            user=user,
             action=f"Applied to job #{application.job.id}"
         )
 
     def update(self, request, *args, **kwargs):
         user = request.user
+
+        if not user.is_authenticated:
+            raise PermissionDenied("Authentication required")
+
         application = self.get_object()
 
-        if user.role == "admin":
+        # 👑 Admin
+        if getattr(user, "role", None) == "admin":
             response = super().update(request, *args, **kwargs)
 
             ActivityLog.objects.create(
@@ -61,7 +63,8 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
             return response
 
-        if user.role == "recruiter":
+        # 🤝 Recruiter
+        if getattr(user, "role", None) == "recruiter":
             if application.job.company.owner != user:
                 raise PermissionDenied("You cannot modify this application")
 

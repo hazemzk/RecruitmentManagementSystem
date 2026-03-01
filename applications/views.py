@@ -15,6 +15,19 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
 
+        if not user.is_authenticated:
+            return Application.objects.none()
+
+        if user.role == "admin":
+            return Application.objects.all()
+
+        if user.role == "recruiter":
+            return Application.objects.filter(
+                job__company__owner=user
+            )
+
+        return Application.objects.filter(user=user)
+
         if user.role == "admin":
             return Application.objects.all()
 
